@@ -1,45 +1,5 @@
 use rand::Rng;
 
-fn count_similar_blocks<T: AsRef<[u8]>>(line: T, block_size: usize) -> usize {
-    let mut count = 0;
-    let chunks = line.as_ref().chunks(block_size);
-    let length = chunks.len();
-    for (i, chunk) in chunks.clone().enumerate() {
-        for another_chunk in chunks.clone().rev().take(length - i - 1) {
-            if chunk.eq(another_chunk) {
-                count += 1;
-            }
-        }
-    }
-    count
-}
-
-#[derive(Debug)]
-pub enum Mode {
-    ECB,
-    CBC,
-}
-
-impl std::fmt::Display for Mode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
-            Mode::ECB => write!(f, "ECB"),
-            Mode::CBC => write!(f, "CBC"),
-        }
-    }
-}
-
-/// returns whether or not the given block is encrypted using CBC or ECB
-pub fn ebc_cbc_detection_oracle<T: AsRef<[u8]>>(ciphertext: T, block_size: usize) -> Mode {
-    let ciphertext = ciphertext.as_ref().to_vec();
-    let similar_blocks = count_similar_blocks(ciphertext, block_size);
-    return if similar_blocks > 0 {
-        Mode::ECB
-    } else {
-        Mode::CBC
-    };
-}
-
 // ecb cut and paste
 //
 /// cipher struct, uses the same key throughout its lifetime

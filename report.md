@@ -137,7 +137,50 @@ pub fn perform_ecb_cut_and_paste() {
 The profile_for is a client side function that sanitizes input from malicious characters and appends the additional info to output the formatted text under the key-value format. Wheras parsing_routine is server side and does quite the opposite: parses and deconstructs the decrypted cipher. check_admin checks if the user has admin privileges.
 
 #### Attack 2: Byte at a time ECB decryption: an ECB Chosen Plaintext Attack
-This attack really shows the weakness of ECB. The setup for this demonstration is like this: suppose we have a 'partial' chosen plaintext attack, meaning we only control part of the plaintext, which gets mixed up with another unkonwn secret, and gets encrypted and sent through a channel which we can sniff on. The other secret here is modeled with a secret string which gets appended to our input. Because the encryption is done using AES_ECB_128, we can use the properties of ECB to decrypt it. As we've already seen, the same plaintext block yeilds the same ciphertext block when encrypted, it's independed of other blocks. And since our input is exactly next to the secret we want to decrypt, we can play with the input to maybe reveal characters; specifically, we can initially feed input that is exaclty one byte short of the block size, and that makes the first byte of the appended text part of the ciphertext block of our input, then we can just bruteforce it by trying every possible character (256 tries). <!-- TODO complete this -->
+This attack really shows the weakness of ECB. The setup for this demonstration is like this: suppose we have a 'partial' chosen plaintext attack, meaning we only control part of the plaintext, which gets mixed up with another unkonwn secret, and gets encrypted and sent through a channel which we can sniff on. The other secret here is modeled with a secret string which gets appended to our input. Because the encryption is done using AES_ECB_128, we can use the properties of ECB to decrypt it. As we've already seen, the same plaintext block yeilds the same ciphertext block when encrypted, it's independed of other blocks. And since our input is exactly next to the secret we want to decrypt, we can play with the input to maybe reveal characters; specifically, we can initially feed input that is exaclty one byte short of the block size, and that makes the first byte of the appended text part of the ciphertext block of our input, then we can just bruteforce it by trying every possible character (256 tries). In practice, we provide a random string (that we encode in base64 for obsecurity purposes) that gets appended to the input before encryption.
+```rust
+pub fn crack_a_block(oracle: &Oracle, block_size: usize) -> Vec<u8> {
+    let mut cracked_bytes: Vec<u8> = Vec::new();
+    // for as long as the secret string
+    for byte in 0..oracle.encrypt("").len() {
+        let chunk_index = byte / block_size;
+        let block: Vec<u8> = 
+            (0..(chunk_index + 1) * block_size - 1 - cracked_bytes.len())
+            .map(|_| 65_u8) // ascii('A') is 65, 65_u8, then, is the byte 'A'
+            .collect::<Vec<u8>>();
+        let cipherblocks_to_compare_with = oracle.encrypt(&block)
+            [chunk_index * block_size..(chunk_index + 1) * block_size]
+            .to_vec();
+        for i in 0..=255_u8 {
+            if cipherblocks_to_compare_with
+                == oracle.encrypt(
+                    vec![block.clone(), cracked_bytes.clone(), vec![i]]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<u8>>(),
+                )[chunk_index * block_size..(chunk_index + 1) * block_size]
+                    .to_vec()
+            {
+                cracked_bytes.push(i);
+                break;
+            }
+        }
+    }
+    cracked_bytes
+}
+
+pub fn demo() {
+    let secret_string =
+"YSB2ZXJ5IHNlY3JldCBtZXNzYWdlIHRoYXQgc2hvdWxkbnQgYmUgZGVjcnlwdGVkIGV2ZW4gdGhvdWdoIHdlIGFwcGVuZCB1c2VyIGlucHV0IHRvIGl0";
+    let oracle = Oracle::new(16, secret_string);
+    let block_size = 16;
+    println!(
+        "{}",
+        String::from_utf8(crack_a_block(&oracle, block_size)).unwrap()
+    );
+}
+```
+This code is equivalent to going through every character and appending it to 'AAAAAAAAAAAAAAA' (length: 15) to get a 16 byte block with every possible character, and then comparing them to the block accquired by providing only 'AAAAAAAAAAAAAAA' (length: 15) as input, meaning that the 16th byte will be the first byte of the secret string. We apply the same scheme technique to get the second third and every other byte of the secret string.
 
 ### CBC
 #### Attack 1: CBC Bitflipping Attacks
@@ -160,4 +203,4 @@ For demonstration purposes, suppose we <!-- TODO -->
 
 
 
-
+## References
