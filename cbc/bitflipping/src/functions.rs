@@ -20,13 +20,13 @@ impl Cipher {
     }
 }
 
-pub fn first_function(cipher: &Cipher, input_str: String) -> Vec<u8> {
+pub fn client(cipher: &Cipher, input_str: String) -> Vec<u8> {
     let input_str = input_str.chars().filter(|x| *x != ';' && *x != '=').collect::<String>();
-    let encoded_str = format!("comment1=cooking%20MCs;userdata={input_str};comment2=%20like%20a%20pound%20of%20bacon");
+    let encoded_str = format!("username=some_username;userdata={input_str};comment=a%20thug%20changes%20and%20love%20changes%20And%20best%20friends%20become%20strangers");
     cipher.encrypt(&encoded_str)
 }
 
-pub fn second_function(cipher: &Cipher, ciphertext: Vec<u8>) -> bool {
+pub fn server(cipher: &Cipher, ciphertext: Vec<u8>) -> bool {
     String::from_utf8_lossy(&cipher.decrypt(ciphertext)).contains(";admin=true;")
 }
 
@@ -36,16 +36,16 @@ pub fn second_function(cipher: &Cipher, ciphertext: Vec<u8>) -> bool {
 /// for ?, escaping the filters. same thing goes for = which is 00111101 and
 /// becomes also 00111111
 /// comment1=cooking%20MCs;userdata=some;admin=true;comment2=%20like%20a%20pound%20of%20bacon
-pub fn break_s2ch16() {
+pub fn demo() {
     let cipher = Cipher::new();
     // ?'s to bitflip later
     let my_arbitrary_controlled_input_string = format!("some?admin?true");
     let mut ciphertext =
-        first_function(&cipher, my_arbitrary_controlled_input_string);
+        client(&cipher, my_arbitrary_controlled_input_string);
     // after capturing the ciphertext we have to bitflip the ?'s to make ; and =
     ciphertext[36 - 16] = ciphertext[36 - 16] ^ 0b0000100;
     ciphertext[42 - 16] = ciphertext[42 - 16] ^ 0b0000010;
-    let result = second_function(&cipher, ciphertext);
+    let result = server(&cipher, ciphertext);
     println!("are we admin yet?\n{}", if result {
         "yes!"
     } else {

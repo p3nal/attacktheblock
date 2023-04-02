@@ -31,12 +31,14 @@ pub fn attack() {
                 payload[byte_index] = byte_guess;
                 // if padding is valid
                 if functions::second_function(&cipher, &payload) {
-                    // this next block here is to check for valid padding coincidences...
+                    // this next block here is to check for valid padding
+                    // coincidences...
                     if byte_index > 0 {
                         payload[byte_index - 1] = 0xff_u8;
                         if !functions::second_function(&cipher, &payload) {
-                            // in this case weve fallen on an undexpected valid padding
-                            // see https://crypto.stackexchange.com/questions/40800/is-the-padding-oracle-attack-deterministic
+                            // in this case weve fallen on an undexpected valid
+                            // padding see
+                            // https://crypto.stackexchange.com/questions/40800/is-the-padding-oracle-attack-deterministic
                             // for more info
                             continue;
                         }

@@ -1,9 +1,9 @@
-use crate::functions::break_s2ch16;
+use crate::functions::demo;
 
 mod aes;
 mod functions;
 
 fn main() {
     println!("Hello, world!");
-    break_s2ch16();
+    demo();
 }

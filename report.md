@@ -180,7 +180,7 @@ pub fn demo() {
     );
 }
 ```
-This code is equivalent to going through every character and appending it to 'AAAAAAAAAAAAAAA' (length: 15) to get a 16 byte block with every possible character, and then comparing them to the block accquired by providing only 'AAAAAAAAAAAAAAA' (length: 15) as input, meaning that the 16th byte will be the first byte of the secret string. We apply the same scheme technique to get the second third and every other byte of the secret string.
+This code is equivalent to going through every character and appending it to 'AAAAAAAAAAAAAAA' (length: 15) to get a 16 byte block with every possible character, and then comparing them to the block accquired by providing only 'AAAAAAAAAAAAAAA' (length: 15) as input, meaning that the 16th byte will be the first byte of the secret string. We apply the same scheme technique to get the second third and every other byte of the secret string. This eventually allows us to recover the entirity of the secret string in a reasonable amount of time.
 
 ### CBC
 #### Attack 1: CBC Bitflipping Attacks
@@ -192,15 +192,121 @@ To exploit it in this case we can just use a property of CBC, which is that it X
 
 We can use this to smuggle characters and bitflip them later on the communication channel in order to get back the desired characters.
 
-For demonstration purposes, suppose we <!-- TODO -->
+For demonstration purposes, we can look at the following code:
+```rust
+pub fn client(cipher: &Cipher, input_str: String) -> Vec<u8> {
+    let input_str = input_str.chars().filter(|x| *x != ';' && *x != '=').collect::<String>();
+    let encoded_str = format!("username=some_username;userdata={input_str};comment=a%20thug%20changes%20and%20love%20changes%20And%20best%20friends%20become%20strangers");
+    cipher.encrypt(&encoded_str)
+}
+
+pub fn server(cipher: &Cipher, ciphertext: Vec<u8>) -> bool {
+    String::from_utf8_lossy(&cipher.decrypt(ciphertext)).contains(";admin=true;")
+}
+
+pub fn demo() {
+    let cipher = Cipher::new();
+    // ?'s to bitflip later
+    let my_arbitrary_controlled_input_string = format!("some?admin?true");
+    let mut ciphertext =
+        client(&cipher, my_arbitrary_controlled_input_string);
+    // after capturing the ciphertext we have to bitflip the ?'s to make ; and =
+    ciphertext[36 - 16] = ciphertext[36 - 16] ^ 0b0000100;
+    ciphertext[42 - 16] = ciphertext[42 - 16] ^ 0b0000010;
+    let result = server(&cipher, ciphertext);
+    println!("are we admin yet?\n{}", if result {
+        "yes!"
+    } else {
+        "no..."
+    });
+}
+```
+The client function checks and sanitizes input from any ';' or '=' character. It then encodes it to the form `username=some_username;userdata=<our input string>;comment=<some comment>`. Here we control the userdata field, so we can put special bytes in there and bitflip them by flipping the bytes in the same position in the block prior to that block in the ciphertext.
+The character ';' in ASCII is 00111011, we bitflip the 3rd bit in the same byte position in the first ciphertext block to get 00111111 which is ASCII for '?', escaping the filters. The same thing goes for '=' which is 00111101, and also becomes 00111111. Eventually, when we replay the modified ciphertext back to the server, we get `username=some_username;userdata=some;admin=true;comment=<some comment>` effictively bypassing the client restrictions.
 
 
 #### Attack 2: Padding Oracle Attacks
+This is the best-known attack on modern block-cipher cryptography. It exploits a weakness in the implementation of the decryption part of the cipher. We are going to demonstrate the power of this attack on an implementation of AES_CBC_128.
+This attack depends on a side-channel leak by the decryption function. The leak here is the error message that tells us whether or not the padding is valid. This is an information on the plaintext that we shouldn't have access to.
+As a reminder, a valid padding is N characters of the byte representation of N (with 0 < N < block size + 1) appended to the plaintext to make the length of the block. With this knowledge, here's a simulation of this attack in Rust:
+```rust
+pub fn attack() {
+    let cipher = functions::Cipher::new();
+    let (ciphertext, iv) = functions::first_function(&cipher);
+    let mut plaintext: Vec<char> = Vec::new();
+    let mut payload: Vec<u8> = vec![iv.to_vec(), ciphertext[..16].to_vec()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<u8>>();
+    // iv block block block
+    //    inter inter inter
+    //    plain plain plain
+    for block_index in (0..ciphertext.len()).step_by(16) {
+        let mut intermediate_block = vec![0; 16];
+        let mut plain_block = vec![0 as char; 16];
+
+        if block_index != 0 {
+            payload = ciphertext[block_index - 16..block_index + 16].to_vec();
+        }
+        for byte_index in (0..16).rev() {
+            let cipher_byte = if block_index == 0 {
+                // iv
+                iv[byte_index]
+            } else {
+                // minus 16 to fall back on ciphertext..
+                ciphertext[block_index + byte_index - 16]
+            };
+            for byte_guess in 0..=255_u8 {
+                // bruteforcing to find the byte which yeilds a valid padding
+                payload[byte_index] = byte_guess;
+                // if padding is valid
+                if functions::second_function(&cipher, &payload) {
+                    // this next block here is to check for valid padding
+                    // coincidences...
+                    if byte_index > 0 {
+                        payload[byte_index - 1] = 0xff_u8;
+                        if !functions::second_function(&cipher, &payload) {
+                            // in this case weve fallen on an undexpected valid
+                            // padding
+                            continue;
+                        }
+                    }
+                    // intermediate_byte = 0x01 ^ byte_guess
+                    let intermediate_byte = 16 - byte_index as u8 ^ byte_guess;
+                    intermediate_block[byte_index] = intermediate_byte;
+                    let plain_byte;
+                    // plain_byte = intermediate_byte^prevcipherbyte[byte_index]
+                    plain_byte = intermediate_byte ^ cipher_byte;
+                    // push found byte
+                    plain_block[byte_index] = plain_byte as char;
+                    // setting the last bytes to
+                    // 0x02 or 0x03 0x03 or 0x04 0x04 0x04 etc...
+                    break;
+                }
+            }
+            for byte in byte_index..16 {
+                // padding byte for next time
+                let padding_byte = (16 - byte_index + 1) as u8;
+                payload[byte] = padding_byte ^ intermediate_block[byte] as u8;
+            }
+        }
+        plain_block.iter().for_each(|&x| plaintext.push(x));
+    }
+    println!("{:?}", plaintext.iter().collect::<String>());
+}
+```
+This attack works by bruteforce bitflipping a character in a certain block of the ciphertext; this in turn induces a bitflip in the next plaintext block when decrypted. If we corrupt, say, the last byte of the previous to last block the server will check the padding and it will be a wrong padding, we can keep flipping the bytes until we get a valid padding message, in this case, the padding is either \\x01 or \\x02\\x02 or \\x03\\x03\\x03 etc... then we can just XOR the byte \\x01 with the byte from the ciphertext block before to get the AES decrypted ciphertext byte. We then XOR it again with the byte from the ciphertext block before to get the plaintext byte. We need at most 256 tries to find the last byte. After that we switch to finding the second to last byte and proceed with a similar approach although we have to keep in mind that we are targeting a different padding.
 
 ### History of these attacks in the TLS implementations
 #### BEAST
+The TLS BEAST (Browser Exploit Against SSL/TLS) attack is a cryptographic vulnerability that exploits a weakness in the implementation of the Transport Layer Security (TLS) protocol, which is used to secure communication between web browsers and web servers. It uses the same padding oracle attack to exploit CBC mode and consequently decrypt HTTPS traffic.
+
 #### POODLE
+Padding Oracle On Downgraded Legacy Encryption, or POODLE, is also a cryptographic vulnerability which uses the padding oracle attack to crack implementation of TLS, it has many variants to it, but the most prominent is called *POODLE against TLS* which exploits implementation flaws of CBC encryption mode in the TLS 1.0 - 1.2 protocols. 
 
 
 
 ## References
+
+ - https://crypto.stackexchange.com/questions/40800/is-the-padding-oracle-attack-deterministic
+ - https://www.acunetix.com/blog/web-security-zone/what-is-poodle-attack/
