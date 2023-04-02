@@ -195,8 +195,13 @@ We can use this to smuggle characters and bitflip them later on the communicatio
 For demonstration purposes, we can look at the following code:
 ```rust
 pub fn client(cipher: &Cipher, input_str: String) -> Vec<u8> {
-    let input_str = input_str.chars().filter(|x| *x != ';' && *x != '=').collect::<String>();
-    let encoded_str = format!("username=some_username;userdata={input_str};comment=a%20thug%20changes%20and%20love%20changes%20And%20best%20friends%20become%20strangers");
+    let input_str = input_str
+                        .chars()
+                        .filter(|x| *x != ';' && *x != '=')
+                        .collect::<String>();
+    let encoded_str =
+            format!("username=some_username;userdata={input_str};comment=a%20thug%20changes
+                     %20and%20love%20changes%20And%20best%20friends%20become%20strangers");
     cipher.encrypt(&encoded_str)
 }
 
@@ -296,6 +301,7 @@ pub fn attack() {
 }
 ```
 This attack works by bruteforce bitflipping a character in a certain block of the ciphertext; this in turn induces a bitflip in the next plaintext block when decrypted. If we corrupt, say, the last byte of the previous to last block the server will check the padding and it will be a wrong padding, we can keep flipping the bytes until we get a valid padding message, in this case, the padding is either \\x01 or \\x02\\x02 or \\x03\\x03\\x03 etc... then we can just XOR the byte \\x01 with the byte from the ciphertext block before to get the AES decrypted ciphertext byte. We then XOR it again with the byte from the ciphertext block before to get the plaintext byte. We need at most 256 tries to find the last byte. After that we switch to finding the second to last byte and proceed with a similar approach although we have to keep in mind that we are targeting a different padding.
+In sum, we get the decrypted blocks one by one by exploiting the leak. To mitigate this problem, we should make sure our decryption algorithm doesn't leak information about padding validity on the channel, for example by always returning a vague decryption error without specifiying whether it came from padding (in)validity or not.
 
 ### History of these attacks in the TLS implementations
 #### BEAST
@@ -310,3 +316,5 @@ Padding Oracle On Downgraded Legacy Encryption, or POODLE, is also a cryptograph
 
  - https://crypto.stackexchange.com/questions/40800/is-the-padding-oracle-attack-deterministic
  - https://www.acunetix.com/blog/web-security-zone/what-is-poodle-attack/
+ - https://www.iacr.org/archive/eurocrypt2002/23320530/cbc02_e02d.pdf
+ - https://cryptopals.com/
