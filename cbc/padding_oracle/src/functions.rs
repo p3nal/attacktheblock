@@ -12,21 +12,9 @@ pub struct Cipher {
 impl Cipher {
     pub fn new() -> Cipher {
         // texts to decrypt encoded in base64
-        let list =
-"MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=
-MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=
-MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==
-MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==
-MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl
-MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==
-MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==
-MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=
-MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=
-MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93"
-            .split('\n')
-            .collect::<Vec<&str>>();
+        let st = "c29tZXRoaW5nIHRvIGRlY3J5cHQgd2l0aCBhIHBhZGRpbmcgb3JhY2xlIGF0dGFjay4uIGhlcmUgd2UgZ28BCg==";
         Cipher {
-            selected_string: base64::decode(list[rand::thread_rng().gen_range(0..list.len())]).unwrap(),
+            selected_string: base64::decode(st).unwrap(),
             key: aes::generate_random_bytes(16),
             iv: aes::generate_random_bytes(16),
         }
@@ -34,7 +22,7 @@ MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93"
 }
 
 /// returns ciphertext and IV
-pub fn first_function(cipher: &Cipher) -> (Vec<u8>, &Vec<u8>) {
+pub fn client(cipher: &Cipher) -> (Vec<u8>, &Vec<u8>) {
     (
         aes::aes_cbc_encrypt(
             &cipher.selected_string,
@@ -46,7 +34,7 @@ pub fn first_function(cipher: &Cipher) -> (Vec<u8>, &Vec<u8>) {
 }
 
 /// a decryption function that side-channel leaks
-pub fn second_function<T: AsRef<[u8]>>(cipher: &Cipher, ciphertext: T) -> bool {
+pub fn server<T: AsRef<[u8]>>(cipher: &Cipher, ciphertext: T) -> bool {
     let plaintext = aes::aes_cbc_decrypt(
         ciphertext.as_ref(),
         &cipher.key,

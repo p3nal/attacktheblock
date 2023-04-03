@@ -2,7 +2,7 @@ use crate::functions;
 
 pub fn attack() {
     let cipher = functions::Cipher::new();
-    let (ciphertext, iv) = functions::first_function(&cipher);
+    let (ciphertext, iv) = functions::client(&cipher);
     let mut plaintext: Vec<char> = Vec::new();
     let mut payload: Vec<u8> = vec![iv.to_vec(), ciphertext[..16].to_vec()]
         .into_iter()
@@ -30,12 +30,12 @@ pub fn attack() {
                 // bruteforcing to find the byte which yeilds a valid padding
                 payload[byte_index] = byte_guess;
                 // if padding is valid
-                if functions::second_function(&cipher, &payload) {
+                if functions::server(&cipher, &payload) {
                     // this next block here is to check for valid padding
                     // coincidences...
                     if byte_index > 0 {
                         payload[byte_index - 1] = 0xff_u8;
-                        if !functions::second_function(&cipher, &payload) {
+                        if !functions::server(&cipher, &payload) {
                             // in this case weve fallen on an undexpected valid
                             // padding see
                             // https://crypto.stackexchange.com/questions/40800/is-the-padding-oracle-attack-deterministic
